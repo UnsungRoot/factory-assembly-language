@@ -1,0 +1,41 @@
+workstation "main":
+    say "=== FAL Interactive Calculator ==="
+    say "Enter first number (tray1):"
+    ask tray1
+
+    say "Enter operator (+, -, *, /):"
+    ask_char tray3
+
+    say "Enter second number (tray2):"
+    ask tray2
+
+    if tray3 == '+' then call workstation "op_add"
+    if tray3 == '-' then call workstation "op_sub"
+    if tray3 == '*' then call workstation "op_mul"
+    if tray3 == '/' then call workstation "op_div"
+
+    say "Calculation Result:"
+    say_number tray1
+
+    call_supervisor exit
+end
+
+workstation "op_add":
+    add tray2 to tray1
+    return tray1
+end
+
+workstation "op_sub":
+    sub tray2 from tray1
+    return tray1
+end
+
+workstation "op_mul":
+    multiply tray1 by tray2
+    return tray1
+end
+
+workstation "op_div":
+    divide tray1 by tray2
+    return tray1
+end

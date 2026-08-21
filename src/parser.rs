@@ -46,6 +46,8 @@ pub enum Instruction {
     SayLiteral { text: String },
     SayTray { tray: usize },
     SayNumber { tray: usize },
+    AskNumber { tray: usize },
+    AskChar { tray: usize },
     Call { workstation: String },
     Return { tray: Option<usize> },
     CallSupervisor { action: String, tray: Option<usize> },
@@ -118,7 +120,7 @@ impl Parser {
             }
         }
 
-        // === SAY LITERAL: say "Hello, World!" ===
+        // === SAY LITERAL / TRAY: say "Hello, World!", say tray4 ===
         if code_line.to_lowercase().starts_with("say ") {
             let rest = code_line[4..].trim();
             if rest.starts_with('"') && rest.ends_with('"') && rest.len() >= 2 {
@@ -142,6 +144,33 @@ impl Parser {
                 return Some(Instruction::SayNumber { tray });
             }
         }
+
+        // === ASK_CHAR: ask_char tray3, input_char tray3 ===
+        if code_line.to_lowercase().starts_with("ask_char ")
+            || code_line.to_lowercase().starts_with("ask char ")
+            || code_line.to_lowercase().starts_with("input_char ")
+        {
+            let rest = code_line.split_whitespace().last().unwrap_or("");
+            if rest.to_lowercase().starts_with("tray") {
+                let tray = parse_tray_index(rest);
+                return Some(Instruction::AskChar { tray });
+            }
+        }
+
+        // === ASK_NUMBER / INPUT: ask tray1, ask_number tray1, input tray1, listen tray1 ===
+        if code_line.to_lowercase().starts_with("ask ")
+            || code_line.to_lowercase().starts_with("ask_number ")
+            || code_line.to_lowercase().starts_with("ask number ")
+            || code_line.to_lowercase().starts_with("input ")
+            || code_line.to_lowercase().starts_with("listen ")
+        {
+            let rest = code_line.split_whitespace().last().unwrap_or("");
+            if rest.to_lowercase().starts_with("tray") {
+                let tray = parse_tray_index(rest);
+                return Some(Instruction::AskNumber { tray });
+            }
+        }
+
 
 
         let tokens: Vec<&str> = code_line.split_whitespace().collect();

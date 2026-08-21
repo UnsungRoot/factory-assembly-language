@@ -8,10 +8,27 @@ extern "C" fn fal_print_u64(val: u64) {
     println!("{}", val);
 }
 
+extern "C" fn fal_read_u64() -> u64 {
+    use std::io::{self, BufRead};
+    let mut line = String::new();
+    let stdin = io::stdin();
+    let _ = stdin.lock().read_line(&mut line);
+    line.trim().parse::<u64>().unwrap_or(0)
+}
+
+extern "C" fn fal_read_char() -> u64 {
+    use std::io::{self, BufRead};
+    let mut line = String::new();
+    let stdin = io::stdin();
+    let _ = stdin.lock().read_line(&mut line);
+    line.trim().chars().next().unwrap_or(' ') as u64
+}
+
 struct PendingPatch {
     code_offset: usize,
     target: String,
 }
+
 
 
 struct PendingStringLoad {
@@ -497,7 +514,68 @@ impl DynamicJitEngine {
                 self.emit_restore_registers();
             }
 
+            Instruction::AskNumber { tray } => {
+                let reg_id = self.mapper.resolve_x86_reg_id(*tray);
+
+                self.emit_preserve_registers();
+
+                // Align stack: sub rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
+
+                let fn_addr = fal_read_u64 as *const () as usize as u64;
+                self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
+                self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
+
+                // Restore stack: add rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x08]);
+
+                // Store return value RAX in scratch buffer [rbp - 4088]
+                let disp: i32 = -4088;
+                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+
+                self.emit_restore_registers();
+
+                // Load return value from [rbp - 4088] into tray register
+                let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
+                let modrm = 0x85 | ((reg_id % 8) << 3);
+                self.code.extend_from_slice(&[rex, 0x8b, modrm]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+            }
+
+            Instruction::AskChar { tray } => {
+                let reg_id = self.mapper.resolve_x86_reg_id(*tray);
+
+                self.emit_preserve_registers();
+
+                // Align stack: sub rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
+
+                let fn_addr = fal_read_char as *const () as usize as u64;
+                self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
+                self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
+
+                // Restore stack: add rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x08]);
+
+                // Store return value RAX in scratch buffer [rbp - 4088]
+                let disp: i32 = -4088;
+                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+
+                self.emit_restore_registers();
+
+                // Load return value from [rbp - 4088] into tray register
+                let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
+                let modrm = 0x85 | ((reg_id % 8) << 3);
+                self.code.extend_from_slice(&[rex, 0x8b, modrm]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+            }
+
+
+
             Instruction::Call { workstation } => {
+
                 self.code.push(0xe8); // CALL rel32
                 let code_offset = self.code.len();
                 self.code.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
