@@ -1,0 +1,24 @@
+workstation "main":
+    say "=== Welcome to Factory Assembly Language (FAL) ==="
+
+    tray2 = '8'
+    tray4 = "Default initial value"
+
+    // Inline conditional evaluation:
+    if tray2 == '8' then tray4 = "Hello, World! Tray matched '8' perfectly."
+
+    say tray4
+
+    call workstation "calculate_bonus"
+    say "Returned back to main workstation successfully!"
+    
+    call_supervisor exit
+end
+
+workstation "calculate_bonus":
+    tray1 = 100
+    tray2 = 50
+    add tray2 to tray1
+    store tray1 into storeroom[0]
+    return tray1
+end

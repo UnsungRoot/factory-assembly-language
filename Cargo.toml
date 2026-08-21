@@ -1,0 +1,14 @@
+[package]
+name = "fal"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kasish <kasish@ona.ai>"]
+description = "Factory Assembly Language (FAL) - A low-level programming language and native JIT engine built around a factory mental model."
+license = "MIT"
+readme = "README.md"
+keywords = ["assembly", "jit", "compiler", "educational", "low-level"]
+categories = ["compilers", "development-tools", "education"]
+
+[dependencies]
+memmap2 = "0.9"
+

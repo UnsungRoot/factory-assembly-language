@@ -1,0 +1,18 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+# Note: Cargo.lock is intentionally tracked for binary crates (reproducible builds)
+
+# FAL binaries & local caches
+fal
+fal.exe
+.falz/
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

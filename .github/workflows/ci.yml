@@ -1,0 +1,36 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo Check
+        run: cargo check --verbose
+
+      - name: Run Tests
+        run: cargo test --verbose
+
+      - name: Build Binary
+        run: cargo build --release --verbose
+
+      - name: Run Example Test Suite
+        run: |
+          cargo run -- run examples/full_test.fal
+          cargo run -- run examples/strings_and_conditions.fal
+          cargo run -- env
