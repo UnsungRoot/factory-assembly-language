@@ -3,7 +3,7 @@
 > Low-level programming made simple through a factory mental model.
 > Written entirely in Rust by Kasish. Open-source under MIT License.
 
-[![CI](https://github.com/kasish/fal/actions/workflows/ci.yml/badge.svg)](https://github.com/kasish/fal/actions)
+[![CI](https://github.com/UnsungRoot/factory-assembly-language/actions/workflows/ci.yml/badge.svg)](https://github.com/UnsungRoot/factory-assembly-language/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Language: Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Platform: Linux | macOS](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-green.svg)](#installation)
@@ -162,7 +162,7 @@ FAL always runs correctly even if you move its binary to a different machine or 
 
 ### Linux and macOS (One-Line Installer)
 ```bash
-curl -sSf https://raw.githubusercontent.com/kasish/fal/main/install.sh | sh
+curl -sSf https://raw.githubusercontent.com/UnsungRoot/factory-assembly-language/main/install.sh | sh
 ```
 
 After installation, reload your shell:
@@ -181,7 +181,7 @@ fal env
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # 2. Clone FAL
-git clone https://github.com/kasish/fal.git
+git clone https://github.com/UnsungRoot/factory-assembly-language.git
 cd fal
 
 # 3. Install

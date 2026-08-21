@@ -20,7 +20,7 @@ Our goal is to make low-level computer science, assembly, and JIT compiler conce
 
 ### Building from Source
 ```bash
-git clone https://github.com/your-username/fal.git
+git clone https://github.com/UnsungRoot/factory-assembly-language.git
 cd fal
 cargo build
 ```
