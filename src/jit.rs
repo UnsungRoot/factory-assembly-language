@@ -1,5 +1,5 @@
 use crate::mapper::TrayMapper;
-use crate::parser::{ConditionOp, Instruction, Operand};
+use crate::parser::{ConditionOp, Instruction, Operand, StoreroomOffset};
 use crate::target::{CpuArch, TargetContext};
 use memmap2::MmapMut;
 use std::collections::HashMap;
@@ -23,6 +23,32 @@ extern "C" fn fal_read_char() -> u64 {
     let _ = stdin.lock().read_line(&mut line);
     line.trim().chars().next().unwrap_or(' ') as u64
 }
+
+extern "C" fn fal_read_string() -> *const u8 {
+    use std::io::{self, BufRead};
+    let mut line = String::new();
+    let stdin = io::stdin();
+    let _ = stdin.lock().read_line(&mut line);
+    let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
+    let mut bytes = trimmed.as_bytes().to_vec();
+    bytes.push(0); // null-terminated string
+    let boxed = bytes.into_boxed_slice();
+    Box::into_raw(boxed) as *const u8
+}
+
+extern "C" fn fal_random_max(max: i64) -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    if max <= 0 {
+        return 0;
+    }
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let seed = (nanos ^ (nanos >> 12) ^ 0x5deece66d) as u64;
+    ((seed % (max as u64)) + 1) as i64
+}
+
 
 
 struct PendingPatch {
@@ -188,6 +214,50 @@ impl DynamicJitEngine {
         self.code[jmp_patch_offset..jmp_patch_offset + 4].copy_from_slice(&(rel_jmp as i32).to_le_bytes());
     }
 
+    fn emit_modulo_reg_reg(&mut self, dst_reg: u8, src_reg: u8) {
+        // Safe 64-bit signed integer modulo (remainder is in RDX):
+        // 1. Check if src_reg == 0 (test src_reg, src_reg)
+        let rex_test = 0x48 | (if src_reg >= 8 { 4 } else { 0 }) | (if src_reg >= 8 { 1 } else { 0 });
+        let modrm_test = 0xc0 | ((src_reg % 8) << 3) | (src_reg % 8);
+        self.code.extend_from_slice(&[rex_test, 0x85, modrm_test]); // test src_reg, src_reg
+
+        // 2. jz zero_handler
+        self.code.extend_from_slice(&[0x0f, 0x84, 0x00, 0x00, 0x00, 0x00]); // jz rel32
+        let jz_patch_offset = self.code.len() - 4;
+
+        // 3. Normal signed modulo:
+        self.emit_mov_reg_reg(0, dst_reg); // mov rax, dst_reg
+        self.code.extend_from_slice(&[0x48, 0x99]); // cqo (sign-extend RAX into RDX:RAX)
+        let rex_div = 0x48 | if src_reg >= 8 { 1 } else { 0 };
+        let modrm_div = 0xc0 | (7 << 3) | (src_reg % 8);
+        self.code.extend_from_slice(&[rex_div, 0xf7, modrm_div]); // idiv src_reg
+        self.emit_mov_reg_reg(dst_reg, 2); // mov dst_reg, rdx (RDX has remainder!)
+
+        // Jump over zero_handler
+        self.code.extend_from_slice(&[0xe9, 0x00, 0x00, 0x00, 0x00]); // jmp rel32
+        let jmp_patch_offset = self.code.len() - 4;
+
+        // 4. Zero handler destination:
+        let zero_handler_offset = self.code.len();
+        let rel_jz = (zero_handler_offset as i64) - (jz_patch_offset as i64 + 4);
+        self.code[jz_patch_offset..jz_patch_offset + 4].copy_from_slice(&(rel_jz as i32).to_le_bytes());
+
+        // Set dst_reg = 0
+        self.emit_mov_reg_imm64(dst_reg, 0);
+
+        // 5. Done destination:
+        let done_offset = self.code.len();
+        let rel_jmp = (done_offset as i64) - (jmp_patch_offset as i64 + 4);
+        self.code[jmp_patch_offset..jmp_patch_offset + 4].copy_from_slice(&(rel_jmp as i32).to_le_bytes());
+    }
+
+    fn emit_modulo_reg_imm(&mut self, dst_reg: u8, val: u64) {
+        let temp_reg = 11; // R11
+        self.emit_mov_reg_imm64(temp_reg, val);
+        self.emit_modulo_reg_reg(dst_reg, temp_reg);
+    }
+
+
 
     fn emit_cmp_reg_reg(&mut self, reg_a: u8, reg_b: u8) {
         let rex = 0x48 | (if reg_b >= 8 { 4 } else { 0 }) | (if reg_a >= 8 { 1 } else { 0 });
@@ -330,6 +400,62 @@ impl DynamicJitEngine {
                     _ => {}
                 }
             }
+            Instruction::Modulo { src, dst_tray } => {
+                let dst_reg = self.mapper.resolve_x86_reg_id(*dst_tray);
+                match src {
+                    Operand::Tray(t) => {
+                        let src_reg = self.mapper.resolve_x86_reg_id(*t);
+                        self.emit_modulo_reg_reg(dst_reg, src_reg);
+                    }
+                    Operand::Number(n) => {
+                        let temp_reg = 11;
+                        self.emit_mov_reg_imm64(temp_reg, *n as u64);
+                        self.emit_modulo_reg_reg(dst_reg, temp_reg);
+                    }
+                    _ => {}
+                }
+            }
+            Instruction::Random { max, tray } => {
+                let reg_id = self.mapper.resolve_x86_reg_id(*tray);
+
+                self.emit_preserve_registers();
+
+                match max {
+                    Operand::Tray(t) => {
+                        let src_reg = self.mapper.resolve_x86_reg_id(*t);
+                        self.emit_mov_reg_reg(7, src_reg); // RDI = max
+                    }
+                    Operand::Number(n) => {
+                        self.emit_mov_reg_imm64(7, *n as u64); // RDI = max
+                    }
+                    _ => {
+                        self.emit_mov_reg_imm64(7, 100);
+                    }
+                }
+
+                // Align stack: sub rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
+
+                let fn_addr = fal_random_max as *const () as usize as u64;
+                self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
+                self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
+
+                // Restore stack: add rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x08]);
+
+                // Store return value RAX in scratch buffer [rbp - 4088]
+                let disp: i32 = -4088;
+                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+
+                self.emit_restore_registers();
+
+                // Load return value from [rbp - 4088] into tray register
+                let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
+                let modrm = 0x85 | ((reg_id % 8) << 3);
+                self.code.extend_from_slice(&[rex, 0x8b, modrm]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+            }
             Instruction::Compare { tray_a, val_b } => {
                 let reg_a = self.mapper.resolve_x86_reg_id(*tray_a);
                 match val_b {
@@ -431,20 +557,63 @@ impl DynamicJitEngine {
             }
             Instruction::Store { tray, offset } => {
                 let reg_id = self.mapper.resolve_x86_reg_id(*tray);
-                let disp = ((*offset + 1) * 8) as i32;
-                let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
-                let modrm = 0x85 | ((reg_id % 8) << 3); // [rbp + disp32]
-                self.code.extend_from_slice(&[rex, 0x89, modrm]);
-                self.code.extend_from_slice(&(-disp).to_le_bytes());
+                match offset {
+                    StoreroomOffset::Fixed(k) => {
+                        let disp = ((*k + 1) * 8) as i32;
+                        let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
+                        let modrm = 0x85 | ((reg_id % 8) << 3); // [rbp + disp32]
+                        self.code.extend_from_slice(&[rex, 0x89, modrm]);
+                        self.code.extend_from_slice(&(-disp).to_le_bytes());
+                    }
+                    StoreroomOffset::Dynamic(dyn_tray) => {
+                        let dyn_reg = self.mapper.resolve_x86_reg_id(*dyn_tray);
+                        // r11 = dyn_reg
+                        self.emit_mov_reg_reg(11, dyn_reg);
+                        // r11 += 1
+                        self.emit_add_reg_imm(11, 1);
+                        // r11 <<= 3 (shl r11, 3) -> 49 c1 e3 03
+                        self.code.extend_from_slice(&[0x49, 0xc1, 0xe3, 0x03]);
+                        // neg r11 -> 49 f7 db
+                        self.code.extend_from_slice(&[0x49, 0xf7, 0xdb]);
+                        // add r11, rbp -> 49 01 eb
+                        self.code.extend_from_slice(&[0x49, 0x01, 0xeb]);
+                        // mov [r11], reg_id -> REX.W | REX.B | (reg_id >= 8 ? REX.R : 0)
+                        let rex = 0x49 | if reg_id >= 8 { 4 } else { 0 };
+                        let modrm = 0x03 | ((reg_id % 8) << 3);
+                        self.code.extend_from_slice(&[rex, 0x89, modrm]);
+                    }
+                }
             }
             Instruction::Load { offset, tray } => {
                 let reg_id = self.mapper.resolve_x86_reg_id(*tray);
-                let disp = ((*offset + 1) * 8) as i32;
-                let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
-                let modrm = 0x85 | ((reg_id % 8) << 3); // [rbp + disp32]
-                self.code.extend_from_slice(&[rex, 0x8b, modrm]);
-                self.code.extend_from_slice(&(-disp).to_le_bytes());
+                match offset {
+                    StoreroomOffset::Fixed(k) => {
+                        let disp = ((*k + 1) * 8) as i32;
+                        let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
+                        let modrm = 0x85 | ((reg_id % 8) << 3); // [rbp + disp32]
+                        self.code.extend_from_slice(&[rex, 0x8b, modrm]);
+                        self.code.extend_from_slice(&(-disp).to_le_bytes());
+                    }
+                    StoreroomOffset::Dynamic(dyn_tray) => {
+                        let dyn_reg = self.mapper.resolve_x86_reg_id(*dyn_tray);
+                        // r11 = dyn_reg
+                        self.emit_mov_reg_reg(11, dyn_reg);
+                        // r11 += 1
+                        self.emit_add_reg_imm(11, 1);
+                        // r11 <<= 3 (shl r11, 3) -> 49 c1 e3 03
+                        self.code.extend_from_slice(&[0x49, 0xc1, 0xe3, 0x03]);
+                        // neg r11 -> 49 f7 db
+                        self.code.extend_from_slice(&[0x49, 0xf7, 0xdb]);
+                        // add r11, rbp -> 49 01 eb
+                        self.code.extend_from_slice(&[0x49, 0x01, 0xeb]);
+                        // mov reg_id, [r11]
+                        let rex = 0x49 | if reg_id >= 8 { 4 } else { 0 };
+                        let modrm = 0x03 | ((reg_id % 8) << 3);
+                        self.code.extend_from_slice(&[rex, 0x8b, modrm]);
+                    }
+                }
             }
+
             Instruction::SayLiteral { text } => {
                 let data_offset = self.data_section.len();
                 let mut full_text = text.clone();
@@ -603,6 +772,36 @@ impl DynamicJitEngine {
                 self.code.extend_from_slice(&[rex, 0x8b, modrm]);
                 self.code.extend_from_slice(&disp.to_le_bytes());
             }
+
+            Instruction::AskString { tray } => {
+                let reg_id = self.mapper.resolve_x86_reg_id(*tray);
+
+                self.emit_preserve_registers();
+
+                // Align stack: sub rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
+
+                let fn_addr = fal_read_string as *const () as usize as u64;
+                self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
+                self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
+
+                // Restore stack: add rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x08]);
+
+                // Store return value RAX in scratch buffer [rbp - 4088]
+                let disp: i32 = -4088;
+                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+
+                self.emit_restore_registers();
+
+                // Load return value from [rbp - 4088] into tray register
+                let rex = 0x48 | if reg_id >= 8 { 4 } else { 0 };
+                let modrm = 0x85 | ((reg_id % 8) << 3);
+                self.code.extend_from_slice(&[rex, 0x8b, modrm]);
+                self.code.extend_from_slice(&disp.to_le_bytes());
+            }
+
 
 
 

@@ -17,11 +17,16 @@ pub enum ConditionOp {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum StoreroomOffset {
+    Fixed(usize),
+    Dynamic(usize), // tray index
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
     Workstation { name: String },
     EndWorkstation,
     Fill { val: i64, tray: usize },
-
     AssignChar { val: char, tray: usize },
     AssignString { text: String, tray: usize },
     Move { src_tray: usize, dst_tray: usize },
@@ -30,6 +35,7 @@ pub enum Instruction {
     Sub { src: Operand, dst_tray: usize },
     Multiply { src: Operand, dst_tray: usize },
     Divide { src: Operand, dst_tray: usize },
+    Modulo { src: Operand, dst_tray: usize },
     Compare { tray_a: usize, val_b: Operand },
     Jump { target: String },
     JumpIfEqual { target: String },
@@ -42,17 +48,20 @@ pub enum Instruction {
         target_val: Operand,
         then_inst: Box<Instruction>,
     },
-    Store { tray: usize, offset: usize },
-    Load { offset: usize, tray: usize },
+    Store { tray: usize, offset: StoreroomOffset },
+    Load { offset: StoreroomOffset, tray: usize },
     SayLiteral { text: String },
     SayTray { tray: usize },
     SayNumber { tray: usize },
     AskNumber { tray: usize },
     AskChar { tray: usize },
+    AskString { tray: usize },
+    Random { max: Operand, tray: usize },
     Call { workstation: String },
     Return { tray: Option<usize> },
     CallSupervisor { action: String, tray: Option<usize> },
 }
+
 
 pub struct Parser;
 
@@ -143,6 +152,20 @@ impl Parser {
             if rest.to_lowercase().starts_with("tray") {
                 let tray = parse_tray_index(rest);
                 return Some(Instruction::SayNumber { tray });
+            }
+        }
+
+        // === ASK_STRING / TEXT: ask_string tray1, ask_text tray1, input_string tray1 ===
+        if code_line.to_lowercase().starts_with("ask_string ")
+            || code_line.to_lowercase().starts_with("ask_text ")
+            || code_line.to_lowercase().starts_with("ask text ")
+            || code_line.to_lowercase().starts_with("input_string ")
+            || code_line.to_lowercase().starts_with("input_text ")
+        {
+            let rest = code_line.split_whitespace().last().unwrap_or("");
+            if rest.to_lowercase().starts_with("tray") {
+                let tray = parse_tray_index(rest);
+                return Some(Instruction::AskString { tray });
             }
         }
 
@@ -239,6 +262,22 @@ impl Parser {
                 let dst_tray = parse_tray_index(tokens[1]);
                 let src = parse_operand(tokens[3]);
                 Some(Instruction::Divide { src, dst_tray })
+            }
+            "modulo" | "mod" if tokens.len() >= 4 && tokens[2].to_lowercase() == "by" => {
+                let dst_tray = parse_tray_index(tokens[1]);
+                let src = parse_operand(tokens[3]);
+                Some(Instruction::Modulo { src, dst_tray })
+            }
+            "random" if tokens.len() >= 2 => {
+                let tray = parse_tray_index(tokens[1]);
+                let max = if tokens.len() >= 4 && (tokens[2].to_lowercase() == "max" || tokens[2].to_lowercase() == "to") {
+                    parse_operand(tokens[3])
+                } else if tokens.len() >= 3 {
+                    parse_operand(tokens[2])
+                } else {
+                    Operand::Number(100)
+                };
+                Some(Instruction::Random { max, tray })
             }
             "compare" if tokens.len() >= 4 && tokens[2].to_lowercase() == "with" => {
                 let tray_a = parse_tray_index(tokens[1]);
@@ -356,18 +395,28 @@ pub fn parse_operand(token: &str) -> Operand {
     }
 }
 
-
-pub fn parse_storeroom_offset(s: &str) -> usize {
-    if let Some(open) = s.find('[') {
+pub fn parse_storeroom_offset(s: &str) -> StoreroomOffset {
+    let inner = if let Some(open) = s.find('[') {
         if let Some(close) = s.find(']') {
             if close > open {
-                return s[open + 1..close].trim().parse::<usize>().unwrap_or(0);
+                &s[open + 1..close]
+            } else {
+                s
             }
+        } else {
+            s
         }
+    } else {
+        s
+    };
+
+    let trimmed = inner.trim();
+    if trimmed.to_lowercase().starts_with("tray") {
+        StoreroomOffset::Dynamic(parse_tray_index(trimmed))
+    } else {
+        let val = trimmed.trim_matches(|c: char| !c.is_numeric()).parse::<usize>().unwrap_or(0);
+        StoreroomOffset::Fixed(val)
     }
-    s.trim_matches(|c: char| !c.is_numeric())
-        .parse::<usize>()
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -418,10 +467,13 @@ mod tests {
     #[test]
     fn test_parse_storeroom_and_math() {
         let inst1 = Parser::parse_line("store tray1 into storeroom[0]").unwrap();
-        assert_eq!(inst1, Instruction::Store { tray: 0, offset: 0 });
+        assert_eq!(inst1, Instruction::Store { tray: 0, offset: StoreroomOffset::Fixed(0) });
+
+        let inst1_dyn = Parser::parse_line("store tray1 into storeroom[tray2]").unwrap();
+        assert_eq!(inst1_dyn, Instruction::Store { tray: 0, offset: StoreroomOffset::Dynamic(1) });
 
         let inst2 = Parser::parse_line("load storeroom[5] into tray3").unwrap();
-        assert_eq!(inst2, Instruction::Load { offset: 5, tray: 2 });
+        assert_eq!(inst2, Instruction::Load { offset: StoreroomOffset::Fixed(5), tray: 2 });
 
         let inst3 = Parser::parse_line("add 50 to tray1").unwrap();
         assert_eq!(inst3, Instruction::Add { src: Operand::Number(50), dst_tray: 0 });
@@ -435,6 +487,12 @@ mod tests {
         let inst6 = Parser::parse_line("divide tray1 by 2").unwrap();
         assert_eq!(inst6, Instruction::Divide { src: Operand::Number(2), dst_tray: 0 });
 
+        let inst_mod = Parser::parse_line("modulo tray1 by 5").unwrap();
+        assert_eq!(inst_mod, Instruction::Modulo { src: Operand::Number(5), dst_tray: 0 });
+
+        let inst_rnd = Parser::parse_line("random tray1 max 100").unwrap();
+        assert_eq!(inst_rnd, Instruction::Random { max: Operand::Number(100), tray: 0 });
+
         let inst7 = Parser::parse_line("say tray4").unwrap();
         assert_eq!(inst7, Instruction::SayTray { tray: 3 });
 
@@ -446,8 +504,12 @@ mod tests {
 
         let inst10 = Parser::parse_line("ask_char tray3").unwrap();
         assert_eq!(inst10, Instruction::AskChar { tray: 2 });
+
+        let inst11 = Parser::parse_line("ask_string tray4").unwrap();
+        assert_eq!(inst11, Instruction::AskString { tray: 3 });
     }
 }
+
 
 
 
