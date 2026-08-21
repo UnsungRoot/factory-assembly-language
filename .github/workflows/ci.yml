@@ -31,6 +31,7 @@ jobs:
 
       - name: Run Example Test Suite
         run: |
-          cargo run -- run examples/full_test.fal
+          cargo run -- run examples/verification.fal
           cargo run -- run examples/strings_and_conditions.fal
           cargo run -- env
+
