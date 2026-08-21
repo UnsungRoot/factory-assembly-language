@@ -424,9 +424,28 @@ mod tests {
         let inst3 = Parser::parse_line("add 50 to tray1").unwrap();
         assert_eq!(inst3, Instruction::Add { src: Operand::Number(50), dst_tray: 0 });
 
-        let inst4 = Parser::parse_line("say tray4").unwrap();
-        assert_eq!(inst4, Instruction::SayTray { tray: 3 });
+        let inst4 = Parser::parse_line("sub 15 from tray1").unwrap();
+        assert_eq!(inst4, Instruction::Sub { src: Operand::Number(15), dst_tray: 0 });
+
+        let inst5 = Parser::parse_line("multiply tray1 by 3").unwrap();
+        assert_eq!(inst5, Instruction::Multiply { src: Operand::Number(3), dst_tray: 0 });
+
+        let inst6 = Parser::parse_line("divide tray1 by 2").unwrap();
+        assert_eq!(inst6, Instruction::Divide { src: Operand::Number(2), dst_tray: 0 });
+
+        let inst7 = Parser::parse_line("say tray4").unwrap();
+        assert_eq!(inst7, Instruction::SayTray { tray: 3 });
+
+        let inst8 = Parser::parse_line("say_number tray1").unwrap();
+        assert_eq!(inst8, Instruction::SayNumber { tray: 0 });
+
+        let inst9 = Parser::parse_line("ask tray1").unwrap();
+        assert_eq!(inst9, Instruction::AskNumber { tray: 0 });
+
+        let inst10 = Parser::parse_line("ask_char tray3").unwrap();
+        assert_eq!(inst10, Instruction::AskChar { tray: 2 });
     }
 }
+
 
 
