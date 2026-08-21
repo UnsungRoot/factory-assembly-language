@@ -205,12 +205,12 @@ FAL is designed to be as lean as possible.
 | memmap2   | 0.9     | Allocates anonymous read-write-execute memory pages so the JIT engine can write and run native machine code at runtime. |
 
 ### System Requirements
-| Requirement | Details                                                         |
-|-------------|-----------------------------------------------------------------|
-| OS          | Linux (x86_64 or aarch64), macOS (x86_64 or Apple Silicon)     |
-| CPU         | Any x86_64 or ARM64 processor                                   |
-| Rust        | 1.70 or newer (for building from source only)                   |
-| Disk        | ~2 MB for the FAL binary and FALZ storage                       |
+| Requirement | Details                                                               |
+|-------------|-----------------------------------------------------------------------|
+| OS          | Linux (x86_64 or aarch64), macOS (x86_64 or Apple Silicon)            |
+| CPU         | Any x86_64 or ARM64 processor                                         |
+| Rust        | 1.70 or newer (for building from source only)                         |
+| Disk        | ~2 MB for the FAL binary and FALZ storage                             |
 | RAM         | Minimal. FAL programs use their own 4 KB stack allocation at runtime. |
 
 ---
