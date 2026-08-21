@@ -45,6 +45,7 @@ pub enum Instruction {
     Load { offset: usize, tray: usize },
     SayLiteral { text: String },
     SayTray { tray: usize },
+    SayNumber { tray: usize },
     Call { workstation: String },
     Return { tray: Option<usize> },
     CallSupervisor { action: String, tray: Option<usize> },
@@ -128,6 +129,20 @@ impl Parser {
                 return Some(Instruction::SayTray { tray });
             }
         }
+
+        // === SAY_NUMBER: say_number tray1, say number tray1, print_number tray1 ===
+        if code_line.to_lowercase().starts_with("say_number ")
+            || code_line.to_lowercase().starts_with("say number ")
+            || code_line.to_lowercase().starts_with("print_number ")
+            || code_line.to_lowercase().starts_with("show_number ")
+        {
+            let rest = code_line.split_whitespace().last().unwrap_or("");
+            if rest.to_lowercase().starts_with("tray") {
+                let tray = parse_tray_index(rest);
+                return Some(Instruction::SayNumber { tray });
+            }
+        }
+
 
         let tokens: Vec<&str> = code_line.split_whitespace().collect();
         if tokens.is_empty() {

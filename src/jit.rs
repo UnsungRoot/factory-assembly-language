@@ -4,10 +4,15 @@ use crate::target::{CpuArch, TargetContext};
 use memmap2::MmapMut;
 use std::collections::HashMap;
 
+extern "C" fn fal_print_u64(val: u64) {
+    println!("{}", val);
+}
+
 struct PendingPatch {
     code_offset: usize,
     target: String,
 }
+
 
 struct PendingStringLoad {
     imm_offset: usize,
@@ -469,6 +474,29 @@ impl DynamicJitEngine {
 
                 self.emit_restore_registers();
             }
+            Instruction::SayNumber { tray } => {
+                let reg_id = self.mapper.resolve_x86_reg_id(*tray);
+
+                self.emit_preserve_registers();
+
+                // Move tray value to RDI (1st argument in System V AMD64 ABI)
+                self.emit_mov_reg_reg(7, reg_id); // RDI = tray_reg
+
+                // Align stack to 16 bytes: sub rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
+
+                // Call fal_print_u64
+                let fn_addr = fal_print_u64 as *const () as usize as u64;
+                self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
+
+                self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
+
+                // Restore stack: add rsp, 8
+                self.code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x08]);
+
+                self.emit_restore_registers();
+            }
+
             Instruction::Call { workstation } => {
                 self.code.push(0xe8); // CALL rel32
                 let code_offset = self.code.len();
