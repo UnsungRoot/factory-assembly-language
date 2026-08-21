@@ -4,16 +4,16 @@ use crate::target::{CpuArch, TargetContext};
 use memmap2::MmapMut;
 use std::collections::HashMap;
 
-extern "C" fn fal_print_u64(val: u64) {
+extern "C" fn fal_print_i64(val: i64) {
     println!("{}", val);
 }
 
-extern "C" fn fal_read_u64() -> u64 {
+extern "C" fn fal_read_i64() -> i64 {
     use std::io::{self, BufRead};
     let mut line = String::new();
     let stdin = io::stdin();
     let _ = stdin.lock().read_line(&mut line);
-    line.trim().parse::<u64>().unwrap_or(0)
+    line.trim().parse::<i64>().unwrap_or(0)
 }
 
 extern "C" fn fal_read_char() -> u64 {
@@ -23,6 +23,7 @@ extern "C" fn fal_read_char() -> u64 {
     let _ = stdin.lock().read_line(&mut line);
     line.trim().chars().next().unwrap_or(' ') as u64
 }
+
 
 struct PendingPatch {
     code_offset: usize,
@@ -151,14 +152,42 @@ impl DynamicJitEngine {
     }
 
     fn emit_divide_reg_reg(&mut self, dst_reg: u8, src_reg: u8) {
-        // rax = dst_reg; rdx = 0; idiv src_reg; dst_reg = rax
+        // Safe 64-bit signed integer division:
+        // 1. Check if src_reg == 0 (test src_reg, src_reg)
+        let rex_test = 0x48 | (if src_reg >= 8 { 4 } else { 0 }) | (if src_reg >= 8 { 1 } else { 0 });
+        let modrm_test = 0xc0 | ((src_reg % 8) << 3) | (src_reg % 8);
+        self.code.extend_from_slice(&[rex_test, 0x85, modrm_test]); // test src_reg, src_reg
+
+        // 2. jz zero_handler (skip divide if zero)
+        self.code.extend_from_slice(&[0x0f, 0x84, 0x00, 0x00, 0x00, 0x00]); // jz rel32
+        let jz_patch_offset = self.code.len() - 4;
+
+        // 3. Normal signed division:
         self.emit_mov_reg_reg(0, dst_reg); // mov rax, dst_reg
-        self.emit_mov_reg_imm64(2, 0);      // mov rdx, 0
-        let rex = 0x48 | if src_reg >= 8 { 1 } else { 0 };
-        let modrm = 0xc0 | (7 << 3) | (src_reg % 8);
-        self.code.extend_from_slice(&[rex, 0xf7, modrm]); // idiv src_reg
+        self.code.extend_from_slice(&[0x48, 0x99]); // cqo (sign-extend RAX into RDX:RAX)
+        let rex_div = 0x48 | if src_reg >= 8 { 1 } else { 0 };
+        let modrm_div = 0xc0 | (7 << 3) | (src_reg % 8);
+        self.code.extend_from_slice(&[rex_div, 0xf7, modrm_div]); // idiv src_reg
         self.emit_mov_reg_reg(dst_reg, 0); // mov dst_reg, rax
+
+        // Jump over zero_handler
+        self.code.extend_from_slice(&[0xe9, 0x00, 0x00, 0x00, 0x00]); // jmp rel32
+        let jmp_patch_offset = self.code.len() - 4;
+
+        // 4. Zero handler destination:
+        let zero_handler_offset = self.code.len();
+        let rel_jz = (zero_handler_offset as i64) - (jz_patch_offset as i64 + 4);
+        self.code[jz_patch_offset..jz_patch_offset + 4].copy_from_slice(&(rel_jz as i32).to_le_bytes());
+
+        // Set dst_reg = 0
+        self.emit_mov_reg_imm64(dst_reg, 0);
+
+        // 5. Done destination:
+        let done_offset = self.code.len();
+        let rel_jmp = (done_offset as i64) - (jmp_patch_offset as i64 + 4);
+        self.code[jmp_patch_offset..jmp_patch_offset + 4].copy_from_slice(&(rel_jmp as i32).to_le_bytes());
     }
+
 
     fn emit_cmp_reg_reg(&mut self, reg_a: u8, reg_b: u8) {
         let rex = 0x48 | (if reg_b >= 8 { 4 } else { 0 }) | (if reg_a >= 8 { 1 } else { 0 });
@@ -218,7 +247,7 @@ impl DynamicJitEngine {
 
             Instruction::Fill { val, tray } => {
                 let reg_id = self.mapper.resolve_x86_reg_id(*tray);
-                self.emit_mov_reg_imm64(reg_id, *val);
+                self.emit_mov_reg_imm64(reg_id, *val as u64);
             }
             Instruction::AssignChar { val, tray } => {
                 let reg_id = self.mapper.resolve_x86_reg_id(*tray);
@@ -257,7 +286,7 @@ impl DynamicJitEngine {
                         let src_reg = self.mapper.resolve_x86_reg_id(*t);
                         self.emit_add_reg_reg(dst_reg, src_reg);
                     }
-                    Operand::Number(n) => self.emit_add_reg_imm(dst_reg, *n),
+                    Operand::Number(n) => self.emit_add_reg_imm(dst_reg, *n as u64),
                     Operand::Char(c) => self.emit_add_reg_imm(dst_reg, *c as u64),
                     _ => {}
                 }
@@ -269,7 +298,7 @@ impl DynamicJitEngine {
                         let src_reg = self.mapper.resolve_x86_reg_id(*t);
                         self.emit_sub_reg_reg(dst_reg, src_reg);
                     }
-                    Operand::Number(n) => self.emit_sub_reg_imm(dst_reg, *n),
+                    Operand::Number(n) => self.emit_sub_reg_imm(dst_reg, *n as u64),
                     Operand::Char(c) => self.emit_sub_reg_imm(dst_reg, *c as u64),
                     _ => {}
                 }
@@ -281,7 +310,7 @@ impl DynamicJitEngine {
                         let src_reg = self.mapper.resolve_x86_reg_id(*t);
                         self.emit_imul_reg_reg(dst_reg, src_reg);
                     }
-                    Operand::Number(n) => self.emit_imul_reg_imm(dst_reg, *n),
+                    Operand::Number(n) => self.emit_imul_reg_imm(dst_reg, *n as u64),
                     Operand::Char(c) => self.emit_imul_reg_imm(dst_reg, *c as u64),
                     _ => {}
                 }
@@ -295,7 +324,7 @@ impl DynamicJitEngine {
                     }
                     Operand::Number(n) => {
                         let temp_reg = 11;
-                        self.emit_mov_reg_imm64(temp_reg, *n);
+                        self.emit_mov_reg_imm64(temp_reg, *n as u64);
                         self.emit_divide_reg_reg(dst_reg, temp_reg);
                     }
                     _ => {}
@@ -308,11 +337,12 @@ impl DynamicJitEngine {
                         let reg_b = self.mapper.resolve_x86_reg_id(*t);
                         self.emit_cmp_reg_reg(reg_a, reg_b);
                     }
-                    Operand::Number(n) => self.emit_cmp_reg_imm(reg_a, *n),
+                    Operand::Number(n) => self.emit_cmp_reg_imm(reg_a, *n as u64),
                     Operand::Char(c) => self.emit_cmp_reg_imm(reg_a, *c as u64),
                     _ => {}
                 }
             }
+
             Instruction::Jump { target } => {
                 self.code.push(0xe9); // JMP rel32
                 let code_offset = self.code.len();
@@ -371,10 +401,11 @@ impl DynamicJitEngine {
                         let reg_b = self.mapper.resolve_x86_reg_id(*t);
                         self.emit_cmp_reg_reg(reg_a, reg_b);
                     }
-                    Operand::Number(n) => self.emit_cmp_reg_imm(reg_a, *n),
+                    Operand::Number(n) => self.emit_cmp_reg_imm(reg_a, *n as u64),
                     Operand::Char(c) => self.emit_cmp_reg_imm(reg_a, *c as u64),
                     _ => {}
                 }
+
 
                 // 2. Emit inverted conditional jump skipping then_inst
                 // e.g. If op == Equal, jump over when NOT equal (JNE)
@@ -502,8 +533,8 @@ impl DynamicJitEngine {
                 // Align stack to 16 bytes: sub rsp, 8
                 self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
 
-                // Call fal_print_u64
-                let fn_addr = fal_print_u64 as *const () as usize as u64;
+                // Call fal_print_i64
+                let fn_addr = fal_print_i64 as *const () as usize as u64;
                 self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
 
                 self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
@@ -522,9 +553,10 @@ impl DynamicJitEngine {
                 // Align stack: sub rsp, 8
                 self.code.extend_from_slice(&[0x48, 0x83, 0xec, 0x08]);
 
-                let fn_addr = fal_read_u64 as *const () as usize as u64;
+                let fn_addr = fal_read_i64 as *const () as usize as u64;
                 self.emit_mov_reg_imm64(0, fn_addr); // RAX = fn_addr
                 self.code.extend_from_slice(&[0xff, 0xd0]); // CALL RAX
+
 
                 // Restore stack: add rsp, 8
                 self.code.extend_from_slice(&[0x48, 0x83, 0xc4, 0x08]);

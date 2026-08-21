@@ -36,6 +36,8 @@ workstation "op_mul":
 end
 
 workstation "op_div":
+    if tray2 == 0 then say "Warning: Cannot divide by zero in the factory!"
     divide tray1 by tray2
     return tray1
 end
+

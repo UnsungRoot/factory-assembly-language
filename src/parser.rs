@@ -1,7 +1,7 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operand {
     Tray(usize),
-    Number(u64),
+    Number(i64),
     Char(char),
     StringLit(String),
 }
@@ -20,7 +20,8 @@ pub enum ConditionOp {
 pub enum Instruction {
     Workstation { name: String },
     EndWorkstation,
-    Fill { val: u64, tray: usize },
+    Fill { val: i64, tray: usize },
+
     AssignChar { val: char, tray: usize },
     AssignString { text: String, tray: usize },
     Move { src_tray: usize, dst_tray: usize },
@@ -113,8 +114,8 @@ impl Parser {
                     return Some(Instruction::AssignChar { val: ch, tray });
                 }
 
-                // Numeric literal: tray1 = 42
-                if let Ok(val) = val_str.parse::<u64>() {
+                // Numeric literal: tray1 = 42 or tray1 = -50
+                if let Ok(val) = val_str.parse::<i64>() {
                     return Some(Instruction::Fill { val, tray });
                 }
             }
@@ -172,7 +173,6 @@ impl Parser {
         }
 
 
-
         let tokens: Vec<&str> = code_line.split_whitespace().collect();
         if tokens.is_empty() {
             return None;
@@ -204,17 +204,18 @@ impl Parser {
                 if src_str.to_lowercase().starts_with("tray") {
                     let src_tray = parse_tray_index(src_str);
                     Some(Instruction::Move { src_tray, dst_tray })
-                } else if let Ok(val) = src_str.parse::<u64>() {
+                } else if let Ok(val) = src_str.parse::<i64>() {
                     Some(Instruction::Fill { val, tray: dst_tray })
                 } else {
                     None
                 }
             }
             "fill" if tokens.len() >= 4 && tokens[2].to_lowercase() == "into" => {
-                let val = tokens[1].parse::<u64>().unwrap_or(0);
+                let val = tokens[1].parse::<i64>().unwrap_or(0);
                 let tray = parse_tray_index(tokens[3]);
                 Some(Instruction::Fill { val, tray })
             }
+
             "clear" if tokens.len() >= 2 => {
                 let tray = parse_tray_index(tokens[1]);
                 Some(Instruction::Clear { tray })
@@ -351,9 +352,10 @@ pub fn parse_operand(token: &str) -> Operand {
     } else if t.starts_with('"') && t.ends_with('"') && t.len() >= 2 {
         Operand::StringLit(t[1..t.len() - 1].to_string())
     } else {
-        Operand::Number(t.parse::<u64>().unwrap_or(0))
+        Operand::Number(t.parse::<i64>().unwrap_or(0))
     }
 }
+
 
 pub fn parse_storeroom_offset(s: &str) -> usize {
     if let Some(open) = s.find('[') {
