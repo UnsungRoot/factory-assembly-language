@@ -32,18 +32,18 @@ Forget registers, syscalls, and stack frames. Imagine this:
 +----------------------------------------------------------------------+
 |                        THE FACTORY FLOOR                             |
 |                                                                      |
-|  +-----------------+   +--------+   +----------------------------+  |
-|  | WORKBENCH       |   | BUTTON |   | STOREROOM (RAM)            |  |
-|  | [tray1] [tray2] |   |        |   | [bin 0] [bin 1] [bin 2]... |  |
-|  | [tray3] [tray4] |   | Call   |   |                            |  |
-|  | ...up to tray14 |   | Supvsr |   | Unlimited numbered bins.   |  |
-|  |                 |   |        |   | Slower to reach but stores |  |
-|  | Instant access. |   |        |   | anything while you work.   |  |
-|  | Limited space.  |   |        |   |                            |  |
-|  +-----------------+   +--------+   +----------------------------+  |
+|  +-----------------+   +--------+   +----------------------------+   |
+|  | WORKBENCH       |   | BUTTON |   | STOREROOM (RAM)            |   |
+|  | [tray1] [tray2] |   |        |   | [bin 0] [bin 1] [bin 2]... |   |
+|  | [tray3] [tray4] |   | Call   |   |                            |   |
+|  | ...up to tray14 |   | Supvsr |   | Unlimited numbered bins.   |   |
+|  |                 |   |        |   | Slower to reach but stores |   |
+|  | Instant access. |   |        |   | anything while you work.   |   |
+|  | Limited space.  |   |        |   |                            |   |
+|  +-----------------+   +--------+   +----------------------------+   |
 |                                                                      |
-|  WORKER (CPU):     Reads instructions one at a time.                |
-|  WORKSTATION:      A named room with its own set of private trays.  |
+|  WORKER (CPU):     Reads instructions one at a time.                 |
+|  WORKSTATION:      A named room with its own set of private trays.   |
 +----------------------------------------------------------------------+
 ```
 
@@ -281,11 +281,11 @@ Returned to main workstation!
 ### Arithmetic
 | Syntax                  | Description                           |
 |-------------------------|---------------------------------------|
-| add tray2 to tray1      | tray1 = tray1 + tray2                |
-| add 10 to tray1         | tray1 = tray1 + 10                   |
-| sub 5 from tray1        | tray1 = tray1 - 5                    |
-| multiply tray1 by 3     | tray1 = tray1 * 3                    |
-| divide tray1 by 2       | tray1 = tray1 / 2                    |
+| add tray2 to tray1      | tray1 = tray1 + tray2                 |
+| add 10 to tray1         | tray1 = tray1 + 10                    |
+| sub 5 from tray1        | tray1 = tray1 - 5                     |
+| multiply tray1 by 3     | tray1 = tray1 * 3                     |
+| divide tray1 by 2       | tray1 = tray1 / 2                     |
 
 ### Comparison and Branching
 | Syntax                          | Description                        |
@@ -300,15 +300,15 @@ Returned to main workstation!
 ### Inline Conditionals
 | Syntax                                   | Description                       |
 |------------------------------------------|-----------------------------------|
-| if tray1 == 42 then tray2 = "Found!"    | Full inline conditional one-liner |
-| if tray1 > 100 then tray1 = 100         | Clamp value inline                |
-| if tray2 == 'Z' then say "Got Z!"       | Character comparison              |
+| if tray1 == 42 then tray2 = "Found!"    | Full inline conditional one-liner  |
+| if tray1 > 100 then tray1 = 100         | Clamp value inline                 |
+| if tray2 == 'Z' then say "Got Z!"       | Character comparison               |
 
 ### Storeroom (RAM)
 | Syntax                          | Description                           |
 |---------------------------------|---------------------------------------|
-| store tray1 into storeroom[0]   | Write tray1 to RAM bin 0             |
-| load storeroom[0] into tray2    | Read RAM bin 0 into tray2            |
+| store tray1 into storeroom[0]   | Write tray1 to RAM bin 0              |
+| load storeroom[0] into tray2    | Read RAM bin 0 into tray2             |
 
 ### Output and Supervisor
 | Syntax                 | Description                              |
