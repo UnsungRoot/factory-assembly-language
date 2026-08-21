@@ -1,0 +1,9 @@
+workstation "main":
+    say "What is your name?"
+    ask_string tray1
+
+    say "Hello, "
+    say tray1
+
+    call_supervisor exit
+end

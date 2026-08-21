@@ -1,8 +1,0 @@
-workstation main
-    // Put any data in any tray
-    move 60 to tray10     // Syscall #60 is exit on Linux
-    move 0 to tray14      // Exit status code 0
-
-    // The JIT automatically shuffles Tray 10 -> RAX and Tray 14 -> RDI
-    call supervisor
-endworkstation

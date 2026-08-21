@@ -1,0 +1,12 @@
+workstation "main":
+    say "Enter a number:"
+    ask tray1
+
+    move tray1 to tray2
+    modulo tray2 by 2
+
+    if tray2 == 0 then say "The number is even."
+    if tray2 == 1 then say "The number is odd."
+
+    call_supervisor exit
+end

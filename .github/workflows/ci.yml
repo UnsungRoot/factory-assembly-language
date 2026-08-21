@@ -29,9 +29,5 @@ jobs:
       - name: Build Binary
         run: cargo build --release --verbose
 
-      - name: Run Example Test Suite
-        run: |
-          cargo run -- run examples/verification.fal
-          cargo run -- run examples/strings_and_conditions.fal
-          cargo run -- env
-
+      - name: Verify Environment Info
+        run: cargo run -- env

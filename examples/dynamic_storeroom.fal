@@ -1,0 +1,34 @@
+workstation "main":
+    say "=== Dynamic Storeroom Demo ==="
+
+    // Store values 10, 20, 30 into storeroom slots 0, 1, 2
+    tray1 = 10
+    tray2 = 0
+    store tray1 into storeroom[tray2]
+
+    tray1 = 20
+    tray2 = 1
+    store tray1 into storeroom[tray2]
+
+    tray1 = 30
+    tray2 = 2
+    store tray1 into storeroom[tray2]
+
+    // Read them back using dynamic indexing
+    say "Storeroom slot 0:"
+    tray3 = 0
+    load storeroom[tray3] into tray4
+    say_number tray4
+
+    say "Storeroom slot 1:"
+    tray3 = 1
+    load storeroom[tray3] into tray4
+    say_number tray4
+
+    say "Storeroom slot 2:"
+    tray3 = 2
+    load storeroom[tray3] into tray4
+    say_number tray4
+
+    call_supervisor exit
+end

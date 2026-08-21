@@ -10,7 +10,7 @@ A complete reference for writing programs in FAL.
 | :--- | :--- | :--- |
 | **Workbench** | CPU Register File | Live workbench space |
 | **Tray** | CPU Register | `tray1`, `tray2`, ..., `tray14` |
-| **Storeroom Bin** | RAM (Memory) | `storeroom[0]`, `storeroom[1]` |
+| **Storeroom Bin** | RAM (Memory) | `storeroom[0]`, `storeroom[tray1]` |
 | **Worker** | CPU Core Execution | Executes instructions in order |
 | **Workstation** | Function / Subroutine | `workstation "name": ... end` |
 | **Supervisor** | OS Kernel / Syscall | `call_supervisor exit`, `say`, `ask` |
@@ -61,6 +61,10 @@ multiply tray1 by 3
 divide tray1 by tray2
 divide tray1 by 2
 
+// Modulo (Remainder): tray1 = tray1 % tray2 (or number)
+modulo tray1 by tray2
+modulo tray1 by 3
+
 // Comparison: compares two values and sets internal CPU flags
 compare tray1 with 50
 compare tray1 with tray2
@@ -97,14 +101,17 @@ if tray2 == '8' then tray4 = "Matched 8!"
 ## 5. Pillar 4: Storeroom (RAM) & Supervisor (I/O)
 
 ### A. Storeroom (RAM) Read / Write
-```fal
-// Save tray to storeroom slot
-store tray1 into storeroom[0]
-store tray2 into storeroom[1]
 
-// Load from storeroom slot into tray
+FAL supports both fixed and dynamic storeroom addressing.
+
+```fal
+// Fixed offset: save/load to a known slot
+store tray1 into storeroom[0]
 load storeroom[0] into tray1
-load storeroom[1] into tray3
+
+// Dynamic offset: use the value of a tray as the slot index
+store tray1 into storeroom[tray2]
+load storeroom[tray2] into tray3
 ```
 
 ### B. Screen Output (`say` / `say_number`)
@@ -119,17 +126,30 @@ say tray5
 say_number tray1
 ```
 
-### C. Interactive User Input (`ask` / `ask_char`)
+### C. Interactive User Input (`ask` / `ask_char` / `ask_string`)
 ```fal
-// Read a number from user input (waits for user to type and press Enter)
+// Read a number from user input
 ask tray1
 ask_number tray2
 
 // Read a single character from user input (+, -, *, /, etc.)
 ask_char tray3
+
+// Read a full line of text from user input
+ask_string tray4
+ask_text tray5
+input_string tray6
+input_text tray7
 ```
 
-### D. Supervisor Commands
+### D. Random Number Generation
+```fal
+// Generate a random integer from 1 to max (inclusive)
+random tray1 max 100       // tray1 = random number between 1 and 100
+random tray2 max tray3     // tray2 = random number between 1 and value in tray3
+```
+
+### E. Supervisor Commands
 ```fal
 // Exit the program cleanly
 call_supervisor exit
@@ -165,28 +185,28 @@ end
 
 ---
 
-## 7. Complete Interactive Calculator Example
+## 7. Example Programs
 
+### A. Interactive Calculator
 ```fal
 workstation "main":
     say "=== FAL Interactive Calculator ==="
-    
-    say "Enter first number (A):"
+
+    say "Enter first number:"
     ask tray1
 
     say "Enter operator (+, -, *, /):"
     ask_char tray3
 
-    say "Enter second number (B):"
+    say "Enter second number:"
     ask tray2
 
-    // Branch according to the operator:
     if tray3 == '+' then call workstation "op_add"
     if tray3 == '-' then call workstation "op_sub"
     if tray3 == '*' then call workstation "op_mul"
     if tray3 == '/' then call workstation "op_div"
 
-    say "Calculation Result:"
+    say "Result:"
     say_number tray1
 
     call_supervisor exit
@@ -213,6 +233,45 @@ workstation "op_div":
 end
 ```
 
+### B. Even/Odd Checker (Modulo)
+```fal
+workstation "main":
+    say "Enter a number:"
+    ask tray1
+
+    move tray1 to tray2
+    modulo tray2 by 2
+
+    if tray2 == 0 then say "The number is even."
+    if tray2 == 1 then say "The number is odd."
+
+    call_supervisor exit
+end
+```
+
+### C. Random Number Guessing Game
+```fal
+workstation "main":
+    say "I picked a random number from 1 to 20. Can you guess it?"
+    random tray1 max 20
+
+    say "Enter your guess:"
+    ask tray2
+
+    compare tray2 with tray1
+    jump_if_equal to "correct"
+
+    say "Wrong! The number was:"
+    say_number tray1
+    call_supervisor exit
+end
+
+workstation "correct":
+    say "You guessed it!"
+    call_supervisor exit
+end
+```
+
 ---
 
 ## 8. CLI Command Quick Reference
@@ -221,15 +280,6 @@ end
 # Run a FAL file
 fal run <file.fal>
 
-# Run with the visual factory debugger
-fal debug <file.fal>
-
-# Scaffold a new factory project
-fal new <project_name>
-
-# Inspect hardware environment & FALZ storage
+# Inspect hardware environment
 fal env
-
-# Clean temporary cache and old logs
-fal clean
 ```

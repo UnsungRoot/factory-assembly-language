@@ -1,0 +1,19 @@
+workstation "main":
+    say "I picked a random number from 1 to 20. Can you guess it?"
+    random tray1 max 20
+
+    say "Enter your guess:"
+    ask tray2
+
+    compare tray2 with tray1
+    jump_if_equal to "correct"
+
+    say "Wrong! The number was:"
+    say_number tray1
+    call_supervisor exit
+end
+
+workstation "correct":
+    say "You guessed it!"
+    call_supervisor exit
+end
